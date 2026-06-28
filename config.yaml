@@ -1,0 +1,23 @@
+# WG-Gesucht filter + message configuration.
+#
+# The search URL is the page you land on after applying all your filters on
+# wg-gesucht.de. Open the site, set your filters (city, price, rooms, dates,
+# ...), apply them, then copy the resulting URL here.
+#
+# Credentials are NOT stored here. They are read from environment variables
+# (WG_EMAIL / WG_PASSWORD), which come from GitHub Actions secrets or a local
+# .env file.
+
+# The "applied filter" results URL from wg-gesucht.de.
+search_url: "https://www.wg-gesucht.de/wg-zimmer-und-1-zimmer-wohnungen-und-wohnungen-in-Muenchen.90.0+1+2.1.0.html?user_filter_id=11848712&noDeact=1&radDis=5500&rent_types%5B0%5D=2&rMax=1100&city_id=90&radAdd=Leibregimentsweg+++M%C3%BCnchen&radLat=48.1432010811405&img=1&categories%5B0%5D=0&categories%5B1%5D=1&categories%5B2%5D=2&radLng=11.579006290969335"
+
+# How many of the newest listings to consider per run.
+max_listings_per_run: 5
+
+# Don't message the same listing twice. The IDs of contacted listings are
+# stored in state.json.
+dedupe: true
+
+# Path to the message body sent to landlords. The placeholder {recipient}
+# is replaced with the listing owner's name when available.
+message_file: "message.txt"

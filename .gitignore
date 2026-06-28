@@ -1,0 +1,14 @@
+# Local secrets / generated files
+.env
+config.local.yaml
+*.log
+# Note: state.json IS tracked so the GitHub Action can persist which
+# listings were already contacted between scheduled runs.
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.python-version

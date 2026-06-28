@@ -1,0 +1,54 @@
+name: WG-Gesucht auto message
+
+on:
+  schedule:
+    # Twice a day at 07:00 and 19:00 UTC. Adjust as you like.
+    # cron is always in UTC. Format: minute hour day month weekday.
+    - cron: "0 7,19 * * *"
+  workflow_dispatch: {} # allows manual "Run workflow" from the Actions tab
+
+# Allow the workflow to push the updated state.json back to the repo.
+permissions:
+  contents: write
+
+# Don't let two scheduled runs overlap.
+concurrency:
+  group: wg-gesucht-bot
+  cancel-in-progress: false
+
+jobs:
+  message:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install Playwright browser
+        run: python -m playwright install --with-deps chromium
+
+      - name: Run bot
+        env:
+          WG_EMAIL: ${{ secrets.WG_EMAIL }}
+          WG_PASSWORD: ${{ secrets.WG_PASSWORD }}
+        run: python wg_gesucht.py
+
+      - name: Persist contacted-listings state
+        run: |
+          if [[ -n "$(git status --porcelain state.json)" ]]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add state.json
+            git commit -m "chore: update contacted listings state [skip ci]"
+            git push
+          else
+            echo "No state changes to commit."
+          fi
