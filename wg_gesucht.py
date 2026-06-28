@@ -113,21 +113,46 @@ def login(page, email: str, password: str) -> None:
     print("Logged in.")
 
 
-def fetch_listings(page, search_url: str) -> list[dict]:
-    """Return all listings on the filtered search page: {ad_id, href}."""
-    goto(page, search_url)
-    accept_cookies(page)
-    html = page.content()
+def build_page_url(search_url: str, page_index: int) -> str:
+    """Set the page number (0-based) in a WG-Gesucht search URL.
 
+    The page number is the last numeric segment before ``.html`` in the path,
+    e.g. ``...Muenchen.90.0+1+2.1.0.html`` is page 0, ``...1.1.html`` is page 1.
+    Any query string after ``.html`` is preserved.
+    """
+    path, sep, query = search_url.partition("?")
+    new_path = re.sub(r"\.(\d+)\.html$", f".{page_index}.html", path)
+    return new_path + sep + query
+
+
+def fetch_listings(page, search_url: str, max_pages: int = 1) -> list[dict]:
+    """Return listings across up to ``max_pages`` search-result pages.
+
+    Stops early once a page yields no new ads (i.e. the end of the results).
+    """
     listings: list[dict] = []
     seen: set[str] = set()
-    for ad_id in re.findall(r'data-ad_id="(\d+)"', html):
-        if ad_id in seen:
-            continue
-        seen.add(ad_id)
-        href_m = re.search(rf'href="(/[^"]+\.{ad_id}\.html)"', html)
-        href = href_m.group(1) if href_m else ""
-        listings.append({"ad_id": ad_id, "href": href})
+
+    for page_index in range(max_pages):
+        url = build_page_url(search_url, page_index)
+        goto(page, url)
+        accept_cookies(page)
+        html = page.content()
+
+        new_on_page = 0
+        for ad_id in re.findall(r'data-ad_id="(\d+)"', html):
+            if ad_id in seen:
+                continue
+            seen.add(ad_id)
+            href_m = re.search(rf'href="(/[^"]+\.{ad_id}\.html)"', html)
+            href = href_m.group(1) if href_m else ""
+            listings.append({"ad_id": ad_id, "href": href})
+            new_on_page += 1
+
+        print(f"  page {page_index + 1}: {new_on_page} new listing(s)")
+        if new_on_page == 0:
+            break  # reached the end of the results
+
     return listings
 
 
@@ -194,6 +219,7 @@ def main() -> int:
     dedupe = config.get("dedupe", True)
     contacted = load_state() if dedupe else set()
     max_sends = int(config["max_listings_per_run"])
+    max_pages = int(config.get("max_pages", 1))
     headless = os.environ.get("HEADLESS", "1") != "0"
 
     with sync_playwright() as p:
@@ -208,7 +234,7 @@ def main() -> int:
         page = context.new_page()
 
         login(page, email, password)
-        listings = fetch_listings(page, config["search_url"])
+        listings = fetch_listings(page, config["search_url"], max_pages)
         print(f"Found {len(listings)} listing(s) on the search page.")
 
         sent = 0

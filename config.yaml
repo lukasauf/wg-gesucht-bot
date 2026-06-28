@@ -11,8 +11,16 @@
 # The "applied filter" results URL from wg-gesucht.de.
 search_url: "https://www.wg-gesucht.de/wg-zimmer-und-1-zimmer-wohnungen-und-wohnungen-in-Muenchen.90.0+1+2.1.0.html?user_filter_id=11848712&noDeact=1&radDis=5500&rent_types%5B0%5D=2&rMax=1100&city_id=90&radAdd=Leibregimentsweg+++M%C3%BCnchen&radLat=48.1432010811405&img=1&categories%5B0%5D=0&categories%5B1%5D=1&categories%5B2%5D=2&radLng=11.579006290969335"
 
-# How many of the newest listings to consider per run.
-max_listings_per_run: 5
+# How many of the newest listings to contact per run.
+# dedupe (below) guarantees nobody is messaged twice, so a higher number just
+# reaches more *new* landlords each run. Note: sending very many messages in a
+# short time can trigger WG-Gesucht's spam protection. ~30/run (with the 5s
+# pause between sends) stays well within safe limits. 2 runs/day = ~60/day.
+max_listings_per_run: 30
+
+# How many search-result pages to scan (each page has ~20-30 listings).
+# The bot stops early if a page returns no more results.
+max_pages: 10
 
 # Don't message the same listing twice. The IDs of contacted listings are
 # stored in state.json.
