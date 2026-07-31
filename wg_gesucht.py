@@ -96,20 +96,31 @@ def accept_cookies(page) -> None:
 
 
 def login(page, email: str, password: str) -> None:
-    """Log in through the website UI so all session cookies are set."""
-    goto(page, f"{BASE_URL}/")
+    """Log in through the website UI so all session cookies are set.
+
+    WG-Gesucht now uses a two-step sign-in modal: first enter the email address
+    and click "Weiter", then enter the password on the "Willkommen zurück" step
+    and submit with "Einloggen".
+    """
+    goto(page, f"{BASE_URL}/?modal=sign_in")
     accept_cookies(page)
 
-    # Open the login modal.
-    goto(page, f"{BASE_URL}/mein-wg-gesucht.html")
-    accept_cookies(page)
+    # Step 1: email address, then "Weiter".
+    page.fill("#pre_session_email", email, timeout=20000)
+    page.get_by_role("button", name="Weiter", exact=True).first.click()
 
-    page.fill("#login_email_username", email)
-    page.fill("#login_password", password)
-    page.click("#login_submit")
+    # Step 2: password on the "Willkommen zurück" screen, then "Einloggen".
+    page.fill("#login_password", password, timeout=20000)
+    page.get_by_role("button", name="Einloggen", exact=True).first.click()
 
-    # Wait until the account name/email shows up, confirming we're logged in.
-    page.wait_for_selector("text=Mein Konto", timeout=20000)
+    # On success the sign-in modal closes and the password field detaches.
+    try:
+        page.wait_for_selector("#login_password", state="hidden", timeout=20000)
+    except PWTimeout as exc:
+        raise RuntimeError(
+            "Login did not complete. Check WG_EMAIL/WG_PASSWORD "
+            "(an additional verification step may also be required)."
+        ) from exc
     print("Logged in.")
 
 
