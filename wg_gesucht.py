@@ -114,7 +114,7 @@ def login(page, email: str, password: str) -> None:
 
     # Step 2: password on the "Willkommen zurück" screen, then "Einloggen".
     page.fill("#login_password", password, timeout=20000)
-    page.get_by_role("button", name="Einloggen", exact=True).first.click()
+    page.get_by_role("button", name="Einloggen", exact=True).first.click(force=True)
 
     # On success the sign-in modal closes and the password field detaches.
     try:
