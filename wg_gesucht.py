@@ -81,13 +81,16 @@ def accept_cookies(page) -> None:
     for sel in (
         "#cmpwelcomebtnyes a",
         "#cmpbntyestxt",
+        "#cmpbox button:has-text('Alle akzeptieren')",
+        "#cmpbox button:has-text('Akzeptieren')",
+        "#cmpbox button:has-text('Accept all')",
         "button:has-text('Alle akzeptieren')",
         "button:has-text('Accept all')",
     ):
         try:
             el = page.locator(sel).first
             if el.is_visible(timeout=1500):
-                el.click(timeout=1500)
+                el.click(timeout=1500, force=True)
                 return
         except PWTimeout:
             continue
@@ -107,7 +110,7 @@ def login(page, email: str, password: str) -> None:
 
     # Step 1: email address, then "Weiter".
     page.fill("#pre_session_email", email, timeout=20000)
-    page.get_by_role("button", name="Weiter", exact=True).first.click()
+    page.get_by_role("button", name="Weiter", exact=True).first.click(force=True)
 
     # Step 2: password on the "Willkommen zurück" screen, then "Einloggen".
     page.fill("#login_password", password, timeout=20000)
