@@ -211,14 +211,45 @@ def send_message(page, listing: dict, body_template: str) -> bool:
     # Click the visible "Senden" button.
     page.get_by_role("button", name="Senden").first.click()
 
-    # Confirm success.
-    try:
-        page.wait_for_selector("text=wurde erfolgreich kontaktiert", timeout=10000)
-        print(f"  ✓ messaged ad {listing['ad_id']}" + (f" ({recipient})" if recipient else ""))
-        return True
-    except PWTimeout:
-        print(f"  ✗ no success confirmation for ad {listing['ad_id']}")
-        return False
+    # Confirm success. WG-Gesucht changes wording/UI over time, so check several
+    # success markers instead of one exact phrase.
+    success_selectors = (
+        "text=/wurde erfolgreich kontaktiert/i",
+        "text=/nachricht (wurde )?(erfolgreich )?(versendet|gesendet)/i",
+        "text=/deine nachricht/i",
+        ".alert.alert-success",
+        ".alert-success",
+        ".msgbox_success",
+    )
+    error_selectors = (
+        "text=/zu viele nachrichten/i",
+        "text=/spam/i",
+        "text=/captcha/i",
+        "text=/fehler/i",
+    )
+
+    deadline = time.time() + 15
+    while time.time() < deadline:
+        for sel in success_selectors:
+            try:
+                if page.locator(sel).first.is_visible(timeout=700):
+                    print(f"  ✓ messaged ad {listing['ad_id']}" + (f" ({recipient})" if recipient else ""))
+                    return True
+            except Exception:
+                pass
+
+        for sel in error_selectors:
+            try:
+                if page.locator(sel).first.is_visible(timeout=300):
+                    print(f"  ✗ send failed for ad {listing['ad_id']} (website rejected message)")
+                    return False
+            except Exception:
+                pass
+
+        time.sleep(0.4)
+
+    print(f"  ✗ no success confirmation for ad {listing['ad_id']}")
+    return False
 
 
 def main() -> int:
