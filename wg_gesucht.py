@@ -105,26 +105,82 @@ def login(page, email: str, password: str) -> None:
     and click "Weiter", then enter the password on the "Willkommen zurück" step
     and submit with "Einloggen".
     """
+    def logged_in() -> bool:
+        success_selectors = (
+            "a[href*='mein-wg-gesucht']",
+            "a[href*='logout']",
+            "a:has-text('Mein WG-Gesucht')",
+            "button:has-text('Abmelden')",
+        )
+        for sel in success_selectors:
+            try:
+                if page.locator(sel).first.is_visible(timeout=500):
+                    return True
+            except Exception:
+                pass
+        return False
+
     goto(page, f"{BASE_URL}/?modal=sign_in")
     accept_cookies(page)
 
-    # Step 1: email address, then "Weiter".
-    page.fill("#pre_session_email", email, timeout=20000)
-    page.get_by_role("button", name="Weiter", exact=True).first.click(force=True)
+    if logged_in():
+        print("Logged in.")
+        return
 
-    # Step 2: password on the "Willkommen zurück" screen, then "Einloggen".
-    page.fill("#login_password", password, timeout=20000)
-    page.get_by_role("button", name="Einloggen", exact=True).first.click(force=True)
-
-    # On success the sign-in modal closes and the password field detaches.
+    # Step 1: email address, then "Weiter" (if the two-step login is shown).
     try:
-        page.wait_for_selector("#login_password", state="hidden", timeout=20000)
-    except PWTimeout as exc:
-        raise RuntimeError(
-            "Login did not complete. Check WG_EMAIL/WG_PASSWORD "
-            "(an additional verification step may also be required)."
-        ) from exc
-    print("Logged in.")
+        if page.locator("#pre_session_email").first.is_visible(timeout=6000):
+            page.fill("#pre_session_email", email, timeout=20000)
+            page.get_by_role("button", name="Weiter", exact=True).first.click(force=True)
+    except Exception:
+        pass
+
+    # Step 2: password entry.
+    page.fill("#login_password", password, timeout=20000)
+
+    # Submit with several fallbacks because WG occasionally changes button markup.
+    submit_attempts = (
+        lambda: page.get_by_role("button", name="Einloggen", exact=True).first.click(force=True),
+        lambda: page.locator("button:has-text('Einloggen')").first.click(force=True),
+        lambda: page.locator("#login_password").first.press("Enter"),
+    )
+    for submit in submit_attempts:
+        try:
+            submit()
+        except Exception:
+            continue
+
+        deadline = time.time() + 12
+        while time.time() < deadline:
+            if logged_in():
+                print("Logged in.")
+                return
+            try:
+                if page.locator("#login_password").first.is_hidden(timeout=500):
+                    print("Logged in.")
+                    return
+            except Exception:
+                pass
+            time.sleep(0.4)
+
+    # Include any visible validation/error text to make CI failures actionable.
+    error_text = ""
+    for sel in (".alert-danger", ".invalid-feedback", ".wgg-alert", ".error", "[role='alert']"):
+        try:
+            el = page.locator(sel).first
+            if el.is_visible(timeout=500):
+                txt = el.inner_text(timeout=500).strip()
+                if txt:
+                    error_text = txt
+                    break
+        except Exception:
+            pass
+
+    hint = f" Website said: {error_text}" if error_text else ""
+    raise RuntimeError(
+        "Login did not complete. Check WG_EMAIL/WG_PASSWORD "
+        "(an additional verification step may also be required)." + hint
+    )
 
 
 def build_page_url(search_url: str, page_index: int) -> str:
