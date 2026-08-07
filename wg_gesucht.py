@@ -120,6 +120,19 @@ def login(page, email: str, password: str) -> None:
                 pass
         return False
 
+    def first_visible_selector(candidates: tuple[str, ...], timeout_s: float) -> str:
+        deadline = time.time() + timeout_s
+        while time.time() < deadline:
+            for sel in candidates:
+                try:
+                    visible_sel = f"{sel}:visible"
+                    if page.locator(visible_sel).first.is_visible(timeout=300):
+                        return visible_sel
+                except Exception:
+                    pass
+            time.sleep(0.2)
+        return ""
+
     goto(page, f"{BASE_URL}/?modal=sign_in")
     accept_cookies(page)
 
@@ -128,21 +141,61 @@ def login(page, email: str, password: str) -> None:
         return
 
     # Step 1: email address, then "Weiter" (if the two-step login is shown).
-    try:
-        if page.locator("#pre_session_email").first.is_visible(timeout=6000):
-            page.fill("#pre_session_email", email, timeout=20000)
-            page.get_by_role("button", name="Weiter", exact=True).first.click(force=True)
-    except Exception:
-        pass
+    email_sel = first_visible_selector(("#pre_session_email", "input[type='email']"), timeout_s=8)
+    if email_sel:
+        try:
+            page.fill(email_sel, email, timeout=20000)
+            for next_click in (
+                lambda: page.get_by_role("button", name="Weiter", exact=True).first.click(force=True),
+                lambda: page.locator("button:has-text('Weiter')").first.click(force=True),
+                lambda: page.locator(email_sel).first.press("Enter"),
+            ):
+                try:
+                    next_click()
+                    break
+                except Exception:
+                    continue
+        except Exception:
+            pass
 
-    # Step 2: password entry.
-    page.fill("#login_password", password, timeout=20000)
+    # Step 2: password entry. In CI, hidden duplicate inputs can exist, so only
+    # fill a visible password field.
+    pwd_sel = first_visible_selector(
+        ("#login_password", "input[name='login_password']", "input[type='password']"), timeout_s=8
+    )
+
+    # If no password field is visible yet, try opening the sign-in UI and retry.
+    if not pwd_sel:
+        for open_login in (
+            lambda: page.get_by_role("button", name="Einloggen").first.click(force=True),
+            lambda: page.get_by_role("link", name="Einloggen").first.click(force=True),
+            lambda: page.locator("a[href*='modal=sign_in']").first.click(force=True),
+        ):
+            try:
+                open_login()
+            except Exception:
+                pass
+            pwd_sel = first_visible_selector(
+                ("#login_password", "input[name='login_password']", "input[type='password']"),
+                timeout_s=4,
+            )
+            if pwd_sel:
+                break
+
+    if not pwd_sel:
+        raise RuntimeError(
+            "Login did not complete. Password field did not become visible "
+            "(likely changed login flow or extra verification step)."
+        )
+
+    page.fill(pwd_sel, password, timeout=20000)
 
     # Submit with several fallbacks because WG occasionally changes button markup.
     submit_attempts = (
         lambda: page.get_by_role("button", name="Einloggen", exact=True).first.click(force=True),
+        lambda: page.get_by_role("button", name="Anmelden").first.click(force=True),
         lambda: page.locator("button:has-text('Einloggen')").first.click(force=True),
-        lambda: page.locator("#login_password").first.press("Enter"),
+        lambda: page.locator(pwd_sel).first.press("Enter"),
     )
     for submit in submit_attempts:
         try:
@@ -156,9 +209,10 @@ def login(page, email: str, password: str) -> None:
                 print("Logged in.")
                 return
             try:
-                if page.locator("#login_password").first.is_hidden(timeout=500):
-                    print("Logged in.")
-                    return
+                if not page.locator("input[type='password']:visible").first.is_visible(timeout=300):
+                    if "modal=sign_in" not in page.url:
+                        print("Logged in.")
+                        return
             except Exception:
                 pass
             time.sleep(0.4)
