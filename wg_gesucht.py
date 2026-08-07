@@ -110,11 +110,19 @@ def login(page, email: str, password: str) -> None:
 
     # Step 1: email address, then "Weiter".
     page.fill("#pre_session_email", email, timeout=20000)
-    page.get_by_role("button", name="Weiter", exact=True).first.click(force=True)
+    email_form = page.locator("form:has(#pre_session_email)").first
+    if email_form.count():
+        email_form.locator("button[type='submit'], input[type='submit']").first.click(force=True)
+    else:
+        page.get_by_role("button", name="Weiter", exact=True).last.click(force=True)
 
     # Step 2: password on the "Willkommen zurück" screen, then "Einloggen".
     page.fill("#login_password", password, timeout=20000)
-    page.get_by_role("button", name="Einloggen", exact=True).first.click(force=True)
+    password_form = page.locator("form:has(#login_password)").first
+    if password_form.count():
+        password_form.locator("button[type='submit'], input[type='submit']").first.click(force=True)
+    else:
+        page.get_by_role("button", name="Einloggen", exact=True).last.click(force=True)
 
     # On success the sign-in modal closes and the password field detaches.
     try:
