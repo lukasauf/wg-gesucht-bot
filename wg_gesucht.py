@@ -321,8 +321,8 @@ def send_message(page, listing: dict, body_template: str) -> bool:
     # Click the visible "Senden" button.
     page.get_by_role("button", name="Senden").first.click()
 
-    # Confirm success. WG-Gesucht changes wording/UI over time, so check several
-    # success markers instead of one exact phrase.
+    # Confirm success. WG-Gesucht changes wording/UI over time, so we accept
+    # either an explicit success message or the contact form disappearing.
     success_selectors = (
         "text=/wurde erfolgreich kontaktiert/i",
         "text=/nachricht (wurde )?(erfolgreich )?(versendet|gesendet)/i",
@@ -347,6 +347,15 @@ def send_message(page, listing: dict, body_template: str) -> bool:
                     return True
             except Exception:
                 pass
+
+        try:
+            message_box = page.locator("#message_input")
+            send_button = page.get_by_role("button", name="Senden")
+            if not message_box.first.is_visible(timeout=300) and not send_button.first.is_visible(timeout=300):
+                print(f"  ✓ messaged ad {listing['ad_id']}" + (f" ({recipient})" if recipient else ""))
+                return True
+        except Exception:
+            pass
 
         for sel in error_selectors:
             try:
