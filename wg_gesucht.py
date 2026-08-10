@@ -133,12 +133,28 @@ def login(page, email: str, password: str) -> None:
             time.sleep(0.2)
         return ""
 
-    goto(page, f"{BASE_URL}/?modal=sign_in")
+    # Navigate to the homepage like a real user — avoid loading ?modal=sign_in
+    # directly, which triggers anti-bot detection on some runs.
+    goto(page, BASE_URL)
     accept_cookies(page)
 
     if logged_in():
         print("Logged in.")
         return
+
+    # Click the "Einloggen" button/link in the header to open the login modal.
+    for open_login in (
+        lambda: page.get_by_role("link", name="Einloggen").first.click(force=True),
+        lambda: page.get_by_role("button", name="Einloggen").first.click(force=True),
+        lambda: page.locator("a[href*='modal=sign_in']").first.click(force=True),
+        lambda: page.locator("a:has-text('Login')").first.click(force=True),
+    ):
+        try:
+            open_login()
+            time.sleep(1)
+            break
+        except Exception:
+            continue
 
     # Step 1: email address, then "Weiter" (if the two-step login is shown).
     email_sel = first_visible_selector(("#pre_session_email", "input[type='email']"), timeout_s=8)
@@ -164,23 +180,11 @@ def login(page, email: str, password: str) -> None:
         ("#login_password", "input[name='login_password']", "input[type='password']"), timeout_s=8
     )
 
-    # If no password field is visible yet, try opening the sign-in UI and retry.
     if not pwd_sel:
-        for open_login in (
-            lambda: page.get_by_role("button", name="Einloggen").first.click(force=True),
-            lambda: page.get_by_role("link", name="Einloggen").first.click(force=True),
-            lambda: page.locator("a[href*='modal=sign_in']").first.click(force=True),
-        ):
-            try:
-                open_login()
-            except Exception:
-                pass
-            pwd_sel = first_visible_selector(
-                ("#login_password", "input[name='login_password']", "input[type='password']"),
-                timeout_s=4,
-            )
-            if pwd_sel:
-                break
+        raise RuntimeError(
+            "Login did not complete. Password field did not become visible "
+            "(likely changed login flow or extra verification step)."
+        )
 
     if not pwd_sel:
         raise RuntimeError(
