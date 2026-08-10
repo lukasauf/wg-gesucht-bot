@@ -43,5 +43,12 @@ jobs:
           WG_PASSWORD: ${{ secrets.WG_PASSWORD }}
         run: python wg_gesucht.py
 
+      - name: Upload login failure screenshot
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: login-failure
+          path: login_failure.png
+
       # state.json commit removed: WG-Gesucht filters already-contacted ads
       # server-side via exContAds=1 in the search URL.

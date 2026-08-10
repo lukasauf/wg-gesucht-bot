@@ -157,7 +157,16 @@ def login(page, email: str, password: str) -> None:
             continue
 
     # Step 1: email address, then "Weiter" (if the two-step login is shown).
-    email_sel = first_visible_selector(("#pre_session_email", "input[type='email']"), timeout_s=8)
+    email_sel = first_visible_selector(("#pre_session_email", "input[type='email']"), timeout_s=10)
+
+    # Fallback: if the modal didn't open from the homepage, navigate directly
+    # to the sign-in URL and try again.
+    if not email_sel:
+        print("  login modal not found on homepage, trying direct sign-in URL…")
+        goto(page, f"{BASE_URL}/?modal=sign_in")
+        accept_cookies(page)
+        email_sel = first_visible_selector(("#pre_session_email", "input[type='email']"), timeout_s=10)
+
     if email_sel:
         try:
             page.fill(email_sel, email, timeout=20000)
@@ -171,22 +180,28 @@ def login(page, email: str, password: str) -> None:
                     break
                 except Exception:
                     continue
+            # Give the form transition time to complete before looking for the
+            # password field — especially important in slower CI environments.
+            time.sleep(2)
         except Exception:
             pass
+    else:
+        print("  WARNING: email field not found; will attempt to find password field directly")
 
     # Step 2: password entry. In CI, hidden duplicate inputs can exist, so only
     # fill a visible password field.
     pwd_sel = first_visible_selector(
-        ("#login_password", "input[name='login_password']", "input[type='password']"), timeout_s=8
+        ("#login_password", "input[name='login_password']", "input[type='password']"), timeout_s=15
     )
 
     if not pwd_sel:
-        raise RuntimeError(
-            "Login did not complete. Password field did not become visible "
-            "(likely changed login flow or extra verification step)."
-        )
-
-    if not pwd_sel:
+        # Save a screenshot so the CI artefact can show what the page looks like.
+        try:
+            shot_path = ROOT / "login_failure.png"
+            page.screenshot(path=str(shot_path))
+            print(f"  Screenshot saved to {shot_path}")
+        except Exception:
+            pass
         raise RuntimeError(
             "Login did not complete. Password field did not become visible "
             "(likely changed login flow or extra verification step)."
