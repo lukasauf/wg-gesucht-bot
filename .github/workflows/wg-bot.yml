@@ -43,14 +43,5 @@ jobs:
           WG_PASSWORD: ${{ secrets.WG_PASSWORD }}
         run: python wg_gesucht.py
 
-      - name: Persist contacted-listings state
-        run: |
-          if [[ -n "$(git status --porcelain state.json)" ]]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add state.json
-            git commit -m "chore: update contacted listings state [skip ci]"
-            git push
-          else
-            echo "No state changes to commit."
-          fi
+      # state.json commit removed: WG-Gesucht filters already-contacted ads
+      # server-side via exContAds=1 in the search URL.

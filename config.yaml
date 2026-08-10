@@ -9,7 +9,7 @@
 # .env file.
 
 # The "applied filter" results URL from wg-gesucht.de.
-search_url: "https://www.wg-gesucht.de/wg-zimmer-und-1-zimmer-wohnungen-und-wohnungen-in-Muenchen.90.0+1+2.1.0.html?user_filter_id=11848712&noDeact=1&radDis=5500&rent_types%5B0%5D=2&rMax=1100&city_id=90&radAdd=Leibregimentsweg+++M%C3%BCnchen&radLat=48.1432010811405&img=1&categories%5B0%5D=0&categories%5B1%5D=1&categories%5B2%5D=2&radLng=11.579006290969335"
+search_url: "https://www.wg-gesucht.de/wg-zimmer-und-1-zimmer-wohnungen-und-wohnungen-in-Muenchen.90.0+1+2.1.0.html?categories%5B%5D=0&categories%5B%5D=1&categories%5B%5D=2&rent_types%5B%5D=2&rent_range=0%2C1100&min_rent=0&max_rent=1100&offer_filter=1&city_id=90&sort_column=3&sort_order=0&noDeact=1&rMax=1100&radAdd=Leibregimentsweg+++M%C3%BCnchen&radLat=48.1432010811405&radLng=11.579006290969335&exContAds=1"
 
 # How many of the newest listings to contact per run.
 # dedupe (below) guarantees nobody is messaged twice, so a higher number just
@@ -22,9 +22,9 @@ max_listings_per_run: 50
 # The bot stops early if a page returns no more results.
 max_pages: 20
 
-# Don't message the same listing twice. The IDs of contacted listings are
-# stored in state.json.
-dedupe: true
+# Dedupe is handled server-side by WG-Gesucht's "exContAds=1" filter in the
+# search URL (kontaktierte Anzeigen herausfiltern). Local tracking not needed.
+dedupe: false
 
 # Path to the message body sent to landlords. The placeholder {recipient}
 # is replaced with the listing owner's name when available.
