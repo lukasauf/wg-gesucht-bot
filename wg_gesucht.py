@@ -125,9 +125,9 @@ def login(page, email: str, password: str) -> None:
         while time.time() < deadline:
             for sel in candidates:
                 try:
-                    visible_sel = f"{sel}:visible"
-                    if page.locator(visible_sel).first.is_visible(timeout=300):
-                        return visible_sel
+                    # Try both with and without :visible pseudo-selector
+                    if page.locator(sel).first.is_visible(timeout=300):
+                        return sel
                 except Exception:
                     pass
             time.sleep(0.2)
@@ -151,13 +151,15 @@ def login(page, email: str, password: str) -> None:
     ):
         try:
             open_login()
-            time.sleep(1)
+            time.sleep(1.5)
             break
         except Exception:
             continue
 
     # Step 1: email address, then "Weiter" (if the two-step login is shown).
-    email_sel = first_visible_selector(("#pre_session_email", "input[type='email']"), timeout_s=10)
+    email_sel = first_visible_selector(
+        ("#pre_session_email", "input[type='email']", "input[name='login_email_username']"), timeout_s=12
+    )
 
     # Fallback: if the modal didn't open from the homepage, navigate directly
     # to the sign-in URL and try again.
@@ -165,11 +167,15 @@ def login(page, email: str, password: str) -> None:
         print("  login modal not found on homepage, trying direct sign-in URL…")
         goto(page, f"{BASE_URL}/?modal=sign_in")
         accept_cookies(page)
-        email_sel = first_visible_selector(("#pre_session_email", "input[type='email']"), timeout_s=10)
+        email_sel = first_visible_selector(
+            ("#pre_session_email", "input[type='email']", "input[name='login_email_username']"), timeout_s=12
+        )
 
     if email_sel:
         try:
             page.fill(email_sel, email, timeout=20000)
+            time.sleep(0.5)
+            
             for next_click in (
                 lambda: page.get_by_role("button", name="Weiter", exact=True).first.click(force=True),
                 lambda: page.locator("button:has-text('Weiter')").first.click(force=True),
@@ -182,16 +188,39 @@ def login(page, email: str, password: str) -> None:
                     continue
             # Give the form transition time to complete before looking for the
             # password field — especially important in slower CI environments.
-            time.sleep(2)
-        except Exception:
-            pass
+            time.sleep(3)
+        except Exception as e:
+            print(f"  WARNING: error filling email field: {e}")
     else:
         print("  WARNING: email field not found; will attempt to find password field directly")
+
+    # Check for CAPTCHA or verification modals
+    captcha_selectors = (
+        "iframe[src*='recaptcha']",
+        "iframe[src*='hcaptcha']",
+        ".h-captcha",
+        "[data-sitekey]",
+    )
+    for sel in captcha_selectors:
+        try:
+            if page.locator(sel).first.is_visible(timeout=500):
+                print("  WARNING: CAPTCHA detected on login page")
+                time.sleep(2)
+                break
+        except Exception:
+            pass
 
     # Step 2: password entry. In CI, hidden duplicate inputs can exist, so only
     # fill a visible password field.
     pwd_sel = first_visible_selector(
-        ("#login_password", "input[name='login_password']", "input[type='password']"), timeout_s=15
+        (
+            "#login_password",
+            "input[name='login_password']",
+            "input[type='password']",
+            "#password",
+            "input[id*='password']",
+        ),
+        timeout_s=20,
     )
 
     if not pwd_sel:
@@ -200,6 +229,9 @@ def login(page, email: str, password: str) -> None:
             shot_path = ROOT / "login_failure.png"
             page.screenshot(path=str(shot_path))
             print(f"  Screenshot saved to {shot_path}")
+            # Also print page HTML for debugging
+            print(f"  Current URL: {page.url}")
+            print(f"  Page title: {page.title()}")
         except Exception:
             pass
         raise RuntimeError(
@@ -207,13 +239,19 @@ def login(page, email: str, password: str) -> None:
             "(likely changed login flow or extra verification step)."
         )
 
-    page.fill(pwd_sel, password, timeout=20000)
+    try:
+        page.fill(pwd_sel, password, timeout=20000)
+        time.sleep(0.5)
+    except Exception as e:
+        print(f"  ERROR filling password field: {e}")
+        raise
 
     # Submit with several fallbacks because WG occasionally changes button markup.
     submit_attempts = (
         lambda: page.get_by_role("button", name="Einloggen", exact=True).first.click(force=True),
         lambda: page.get_by_role("button", name="Anmelden").first.click(force=True),
         lambda: page.locator("button:has-text('Einloggen')").first.click(force=True),
+        lambda: page.locator("button:has-text('Login')").first.click(force=True),
         lambda: page.locator(pwd_sel).first.press("Enter"),
     )
     for submit in submit_attempts:
@@ -222,13 +260,13 @@ def login(page, email: str, password: str) -> None:
         except Exception:
             continue
 
-        deadline = time.time() + 12
+        deadline = time.time() + 15
         while time.time() < deadline:
             if logged_in():
                 print("Logged in.")
                 return
             try:
-                if not page.locator("input[type='password']:visible").first.is_visible(timeout=300):
+                if not page.locator("input[type='password']").first.is_visible(timeout=300):
                     if "modal=sign_in" not in page.url:
                         print("Logged in.")
                         return
