@@ -78,24 +78,51 @@ def goto(page, url: str, tries: int = 3) -> None:
 
 def accept_cookies(page) -> None:
     """Dismiss the consent banner if present (it sits in an iframe or inline)."""
-    for sel in (
+    selectors = (
         "#cmpwelcomebtnyes a",
         "#cmpbntyestxt",
         "#cmpbox button:has-text('Alle akzeptieren')",
         "#cmpbox button:has-text('Akzeptieren')",
         "#cmpbox button:has-text('Accept all')",
+        "#cmpbox button:has-text('Zustimmen')",
         "button:has-text('Alle akzeptieren')",
+        "button:has-text('Akzeptieren')",
         "button:has-text('Accept all')",
-    ):
+        "button:has-text('Zustimmen')",
+        "[aria-label='Akzeptieren']",
+    )
+
+    deadline = time.time() + 15
+    while time.time() < deadline:
+        contexts = [page, *page.frames]
+        for context in contexts:
+            for sel in selectors:
+                try:
+                    el = context.locator(sel).first
+                    if el.is_visible(timeout=500):
+                        el.click(timeout=1500, force=True)
+                        time.sleep(1)
+                        return
+                except PWTimeout:
+                    continue
+                except Exception:
+                    continue
+
         try:
-            el = page.locator(sel).first
-            if el.is_visible(timeout=1500):
-                el.click(timeout=1500, force=True)
-                return
-        except PWTimeout:
-            continue
+            consent_frame = page.frame_locator("iframe[title*='consent'], iframe[id*='sp_message'], iframe[src*='consent']")
+            for sel in selectors:
+                try:
+                    el = consent_frame.locator(sel).first
+                    if el.is_visible(timeout=500):
+                        el.click(timeout=1500, force=True)
+                        time.sleep(1)
+                        return
+                except Exception:
+                    continue
         except Exception:
-            continue
+            pass
+
+        time.sleep(0.5)
 
 
 def login(page, email: str, password: str) -> None:
@@ -207,6 +234,8 @@ def login(page, email: str, password: str) -> None:
     except Exception:
         pass
 
+    accept_cookies(page)
+
     if logged_in():
         print("Logged in.")
         return
@@ -231,6 +260,8 @@ def login(page, email: str, password: str) -> None:
     except Exception:
         pass
 
+    accept_cookies(page)
+
     try:
         page.locator("#authentication_flow_modal").wait_for(state="visible", timeout=10000)
     except Exception:
@@ -252,6 +283,7 @@ def login(page, email: str, password: str) -> None:
             page.wait_for_load_state("networkidle", timeout=10000)
         except Exception:
             pass
+        accept_cookies(page)
         try:
             show_auth_modal()
         except Exception:
@@ -315,6 +347,7 @@ def login(page, email: str, password: str) -> None:
     )
 
     if not pwd_sel:
+        accept_cookies(page)
         try:
             force_login_step(email)
             pwd_sel = first_visible_selector(
