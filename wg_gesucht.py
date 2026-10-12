@@ -162,6 +162,41 @@ def login(page, email: str, password: str) -> None:
             """
         )
 
+    def force_login_step(email_value: str) -> None:
+        page.evaluate(
+            """
+            (emailValue) => {
+                const modal = document.querySelector('#authentication_flow_modal');
+                if (!modal) return;
+
+                const preSessionStep = modal.querySelector('[data-step="pre_session"]');
+                const loginStep = modal.querySelector('[data-step="login"]');
+                if (preSessionStep) preSessionStep.classList.add('display-none');
+                if (loginStep) loginStep.classList.remove('display-none');
+
+                const hiddenEmailInput = modal.querySelector('#login_form input[name="login_email_username"][type="hidden"]');
+                if (hiddenEmailInput) {
+                    hiddenEmailInput.value = emailValue;
+                    hiddenEmailInput.dispatchEvent(new Event('input', { bubbles: true }));
+                    hiddenEmailInput.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+
+                const visibleEmailInput = modal.querySelector('#login_form input[name="login_email_username"]:not([type="hidden"])');
+                if (visibleEmailInput) {
+                    visibleEmailInput.value = emailValue;
+                    visibleEmailInput.dispatchEvent(new Event('input', { bubbles: true }));
+                    visibleEmailInput.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+
+                const passwordInput = modal.querySelector('#login_password');
+                if (passwordInput) {
+                    passwordInput.focus();
+                }
+            }
+            """,
+            email_value,
+        )
+
     # Navigate to the homepage like a real user — avoid loading ?modal=sign_in
     # directly, which triggers anti-bot detection on some runs.
     goto(page, BASE_URL)
@@ -242,7 +277,9 @@ def login(page, email: str, password: str) -> None:
                     break
                 except Exception:
                     continue
-            wait_for_visible_selector(("#login_password", "input[name='login_password']", "input[type='password']"), timeout_s=20)
+            if not wait_for_visible_selector(("#login_password", "input[name='login_password']", "input[type='password']"), timeout_s=10):
+                force_login_step(email)
+                wait_for_visible_selector(("#login_password", "input[name='login_password']", "input[type='password']"), timeout_s=10)
         except Exception as e:
             print(f"  WARNING: error filling email field: {e}")
     else:
@@ -276,6 +313,22 @@ def login(page, email: str, password: str) -> None:
         ),
         timeout_s=20,
     )
+
+    if not pwd_sel:
+        try:
+            force_login_step(email)
+            pwd_sel = first_visible_selector(
+                (
+                    "#login_password",
+                    "input[name='login_password']",
+                    "input[type='password']",
+                    "#account_linking_password",
+                    "input[id*='password']",
+                ),
+                timeout_s=10,
+            )
+        except Exception:
+            pass
 
     if not pwd_sel:
         # Save a screenshot so the CI artefact can show what the page looks like.
