@@ -125,29 +125,64 @@ def login(page, email: str, password: str) -> None:
         while time.time() < deadline:
             for sel in candidates:
                 try:
-                    # Try both with and without :visible pseudo-selector
-                    if page.locator(sel).first.is_visible(timeout=300):
+                    locator = page.locator(sel)
+                    if locator.count() and locator.first.is_visible(timeout=300):
                         return sel
                 except Exception:
                     pass
             time.sleep(0.2)
         return ""
 
+    def wait_for_visible_selector(candidates: tuple[str, ...], timeout_s: float) -> str:
+        deadline = time.time() + timeout_s
+        while time.time() < deadline:
+            for sel in candidates:
+                try:
+                    page.locator(sel).first.wait_for(state="visible", timeout=1000)
+                    return sel
+                except Exception:
+                    pass
+            time.sleep(0.2)
+        return ""
+
+    def show_auth_modal() -> None:
+        page.evaluate(
+            """
+            () => {
+                const modal = document.querySelector('#authentication_flow_modal');
+                if (!modal) return;
+                if (window.jQuery && typeof window.jQuery(modal).modal === 'function') {
+                    window.jQuery(modal).modal('show');
+                    return;
+                }
+                modal.classList.add('show');
+                modal.style.display = 'block';
+                modal.removeAttribute('aria-hidden');
+            }
+            """
+        )
+
     # Navigate to the homepage like a real user — avoid loading ?modal=sign_in
     # directly, which triggers anti-bot detection on some runs.
     goto(page, BASE_URL)
     accept_cookies(page)
 
+    try:
+        page.wait_for_load_state("networkidle", timeout=10000)
+    except Exception:
+        pass
+
     if logged_in():
         print("Logged in.")
         return
 
-    # Click the "Einloggen" button/link in the header to open the login modal.
+    # Open the auth modal explicitly and fall back to any visible opener.
     for open_login in (
+        lambda: page.get_by_role("link", name="Anmelden").first.click(force=True),
         lambda: page.get_by_role("link", name="Einloggen").first.click(force=True),
         lambda: page.get_by_role("button", name="Einloggen").first.click(force=True),
         lambda: page.locator("a[href*='modal=sign_in']").first.click(force=True),
-        lambda: page.locator("a:has-text('Login')").first.click(force=True),
+        lambda: page.locator("a.auth_required").first.click(force=True),
     ):
         try:
             open_login()
@@ -156,9 +191,20 @@ def login(page, email: str, password: str) -> None:
         except Exception:
             continue
 
+    try:
+        show_auth_modal()
+    except Exception:
+        pass
+
+    try:
+        page.locator("#authentication_flow_modal").wait_for(state="visible", timeout=10000)
+    except Exception:
+        pass
+
     # Step 1: email address, then "Weiter" (if the two-step login is shown).
     email_sel = first_visible_selector(
-        ("#pre_session_email", "input[type='email']", "input[name='login_email_username']"), timeout_s=12
+        ("#pre_session_email", "input[name='email']", "input[type='email']", "input[name='login_email_username']"),
+        timeout_s=12,
     )
 
     # Fallback: if the modal didn't open from the homepage, navigate directly
@@ -167,17 +213,27 @@ def login(page, email: str, password: str) -> None:
         print("  login modal not found on homepage, trying direct sign-in URL…")
         goto(page, f"{BASE_URL}/?modal=sign_in")
         accept_cookies(page)
+        try:
+            page.wait_for_load_state("networkidle", timeout=10000)
+        except Exception:
+            pass
+        try:
+            show_auth_modal()
+        except Exception:
+            pass
         email_sel = first_visible_selector(
-            ("#pre_session_email", "input[type='email']", "input[name='login_email_username']"), timeout_s=12
+            ("#pre_session_email", "input[name='email']", "input[type='email']", "input[name='login_email_username']"),
+            timeout_s=12,
         )
 
     if email_sel:
         try:
             page.fill(email_sel, email, timeout=20000)
             time.sleep(0.5)
-            
+
             for next_click in (
-                lambda: page.get_by_role("button", name="Weiter", exact=True).first.click(force=True),
+                lambda: page.locator("#authentication_flow_modal button[type='submit']").first.click(force=True),
+                lambda: page.get_by_role("button", name="Weiter", exact=False).first.click(force=True),
                 lambda: page.locator("button:has-text('Weiter')").first.click(force=True),
                 lambda: page.locator(email_sel).first.press("Enter"),
             ):
@@ -186,9 +242,7 @@ def login(page, email: str, password: str) -> None:
                     break
                 except Exception:
                     continue
-            # Give the form transition time to complete before looking for the
-            # password field — especially important in slower CI environments.
-            time.sleep(3)
+            wait_for_visible_selector(("#login_password", "input[name='login_password']", "input[type='password']"), timeout_s=20)
         except Exception as e:
             print(f"  WARNING: error filling email field: {e}")
     else:
